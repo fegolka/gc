@@ -1,0 +1,132 @@
+name: Builds automatic toolchains with Crosstool-NG
+on:
+  push:
+    paths:
+      - '*.config'
+#      - '.github/workflows/automatic.yml'
+  pull_request:
+    types:
+      - created
+      - opened
+      - synchronize
+      - reopened
+      - edited
+    paths:
+      - '*.config'
+#      - '.github/workflows/automatic.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag'
+        required: false
+      prerelease:
+        description: 'Prerelease (false/true)'
+        required: true
+        default: 'true'
+jobs:
+  crosstool:
+    name: Crosstool-NG
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout
+      - id: list
+        name: Generate matrix
+        run: list=(*.config) && echo "::set-output name=matrix::$(echo ${list[@]} | sed -e 's/.config/\n/g' -e 's/ //g' | jq -cnR '[inputs | select(length>0)]')"
+      - name: Install dependencies
+        run: sudo apt-get install -y gperf help2man libtool-bin
+      - name: To clone the Crosstool-NG repository
+        run: git clone https://github.com/crosstool-ng/crosstool-ng
+      - name: Configure Crosstool-NG
+        run: cd ${{ github.workspace }}/crosstool-ng && ./bootstrap && ./configure --prefix=${{ github.workspace }}/.ct-ng/
+      - name: Build Crosstool-NG
+        run:  cd ${{ github.workspace }}/crosstool-ng && make install
+      - name: Compresses Crosstool-NG
+        run: cd ${{ github.workspace }} && tar -cf ct-ng.tar *.config .ct-ng/
+      - name: Upload Crosstool-NG
+        uses: actions/upload-artifact@v2
+        with:
+          name: crosstool
+          path: ct-ng.tar
+  toolchains:
+    needs: [crosstool]
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.crosstool.outputs.matrix) }}
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y gperf help2man libtool-bin
+          echo "$GITHUB_WORKSPACE/.ct-ng/bin" >> $GITHUB_PATH
+      - name: Download Crosstool-NG
+        uses: actions/download-artifact@v2
+        with:
+          name: crosstool
+      - name: Extract Crosstool-NG
+        run: |
+          tar -xf ct-ng.tar
+          echo "___________________________________________"
+          ct-ng version
+      - name: Configuration (${{ matrix.target }})
+        run: |
+          mv ${{ matrix.target }}.config .config
+          ct-ng upgradeconfig
+          sed -i -e '/CT_LOG_PROGRESS_BAR/s/y$/n/' .config
+          sed -i -e '/CT_LOCAL_TARBALLS_DIR/s/HOME/CT_TOP_DIR/' .config
+          sed -i -e '/CT_PREFIX_DIR/s/HOME/CT_TOP_DIR/' .config
+          echo "___________________________________________"
+          cat .config
+      - name: Building the Toolchain (${{ matrix.target }}) for ubuntu-latest
+        run: ct-ng build
+      - name: Compresses the Toolchain (${{ matrix.target }})
+#        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag)
+        run: |
+          echo Toolchain-${{ matrix.target }}.tar.xz
+          mkdir -p ${{ github.workspace }}/toolchains
+          find "${{ github.workspace }}/x-tools" -exec chmod +w {} \;
+          for d in ${{ github.workspace }}/x-tools/*/; do [ -d "${d}" ] && XZ_OPT=-e9 tar -cvJf "${{ github.workspace }}/toolchains/Toolchain-${{ matrix.target }}.tar.xz" -C "${d}" . > /dev/null 2>&1; done
+      - name: Upload toolchain (${{ matrix.target }})
+#        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag)
+        uses: actions/upload-artifact@v2
+        with:
+          name: toolchains
+          path: ${{ github.workspace }}/toolchains/Toolchain-${{ matrix.target }}.tar.xz
+  release:
+    needs: [toolchains]
+    name: Automatic Releases
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release tag
+        run: |
+          if [ ${{ github.event_name }} == 'push' ] && [ ${{ github.ref }} == 'refs/heads/master' ]; then
+             echo "release_tag=latest" >> $GITHUB_ENV
+             echo "prerelease=false" >> $GITHUB_ENV
+          elif [ ${{ github.event_name }} == 'push' ] && [ ${{ github.ref }} != 'refs/heads/master' ]; then
+             echo "release_tag=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+             echo "prerelease=false" >> $GITHUB_ENV
+          else
+             echo "release_tag=$(echo ${{ github.event.inputs.tag }} | sed 's/[^A-Z,a-z,0-9]/-/g')" >> $GITHUB_ENV
+             if [ ${{ github.event.inputs.prerelease }} == 'true' ]; then
+                echo "prerelease=true" >> $GITHUB_ENV
+             else
+                echo "prerelease=false" >> $GITHUB_ENV
+             fi
+          fi
+      - name: Download toolchains
+        uses: actions/download-artifact@v2
+        with:
+          name: toolchains
+          path: ${{ github.workspace }}/toolchains
+      - name: Automatic Releases
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: ${{ env.release_tag }}
+          prerelease: ${{ env.prerelease }}
+          title: "GitHub Build"
+          files: ${{ github.workspace }}/toolchains/*.tar.xz
