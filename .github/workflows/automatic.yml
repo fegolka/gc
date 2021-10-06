@@ -39,6 +39,8 @@ jobs:
         run: sudo apt-get install -y gperf help2man libtool-bin
       - name: To clone the Crosstool-NG repository
         run: git clone https://github.com/crosstool-ng/crosstool-ng
+      - name: ISL download (URL)
+        run:  sed -e 's|http://isl.gforge.inria.fr|https://mirror.sobukus.de/files/src/isl|g' -i ${{ github.workspace }}/crosstool-ng/packages/isl/package.desc
       - name: Configure Crosstool-NG
         run: cd ${{ github.workspace }}/crosstool-ng && ./bootstrap && ./configure --prefix=${{ github.workspace }}/.ct-ng/
       - name: Build Crosstool-NG
