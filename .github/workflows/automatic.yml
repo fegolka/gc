@@ -110,6 +110,7 @@ jobs:
              echo "release_tag=latest" >> $GITHUB_ENV
              echo "prerelease=false" >> $GITHUB_ENV
           elif [ ${{ github.event_name }} == 'push' ] && [ ${{ github.ref }} != 'refs/heads/master' ]; then
+             #echo "release_tag=${GITHUB_REF#refs/heads/}-$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
              echo "release_tag=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
              echo "prerelease=false" >> $GITHUB_ENV
           else
