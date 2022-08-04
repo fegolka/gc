@@ -6,7 +6,6 @@
 |--------------------------------------------------|---------------------------------------------------------|
 | [ARM11](/ARM11-arm.config) (ARM1176JZFS)         | Raspberry Pi 1                                          |
 | [Cortex-A7](/Cortex-A7-arm.config)               | Allwinner H2-plus / H3 / R40, Raspberry Pi 2            |
-| [Cortex-A15](/Cortex-A15-arm.config)             | VU+ Ultimo 4K                                           |
 | [Cortex-A15-A7](/Cortex-A15-A7-arm.config)       | Samsung Exynos                                          |
 | [Cortex-A17](/Cortex-A17-arm.config)             | Rockchip RK3288                                         |
 | [Cortex-A53](/Cortex-A53-arm.config)             | Amlogic, NXP iMX8, Qualcomm Dragonboard, Raspberry Pi 3 |
